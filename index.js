@@ -209,6 +209,25 @@ async function run() {
 
 
     // Payment API
+    
+    // get payment api using email query and also get by default all payments sorted by date
+
+    app.get('/payments', async (req, res) => {
+      const query = {}
+      const { email } = req.query;  
+      if (email) {
+        query.userEmail = email;
+      }
+      const options = { sort: { createdAt: -1 } }
+
+      const cursor = paymentCollection.find(query, options);
+      const result = await cursor.toArray();
+      res.send(result);
+    }
+    );
+
+
+
     app.post('/payment-checkout-session', async (req, res) => {
       const paymentInfo = req.body;
       const amount = parseInt(paymentInfo.cost * 100);
@@ -396,7 +415,7 @@ async function run() {
 
     await userCollection.updateOne(
         { _id: new ObjectId(session.metadata.userId) },
-        { $set: { isPremium: false, role: 'premium-citizen' } }
+        { $set: { isPremium: true, role: 'premium-citizen' } }
     );
 
     res.send({
