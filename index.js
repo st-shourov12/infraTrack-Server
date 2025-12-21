@@ -10,6 +10,11 @@ const PDFDocument = require('pdfkit');
 const app = express();
 var serviceAccount = require('./infratrack_fb_sdk.json');
 
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+
 
 
 app.use(cors({
@@ -19,9 +24,27 @@ app.use(cors({
 
 app.use(express.json());
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+const verifyFBToken = async (req, res, next) => {
+    const token = req.headers.authorization;
+
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+
+    try {
+        const idToken = token.split(' ')[1];
+        const decoded = await admin.auth().verifyIdToken(idToken);
+        console.log('decoded in the token', decoded);
+        req.decoded_email = decoded.email;
+        next();
+    }
+    catch (err) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+
+
+}
+
 
 function generateTrackingId() {
   const prefix = "PRM"; // your brand prefix
@@ -79,9 +102,43 @@ async function run() {
     const userCollection = db.collection('users');
     const issueCollection = db.collection('issues');
     const paymentCollection = db.collection('payments');
+    const staffCollection = db.collection('staffs');
+
+
+    // staff api
+
+
+    app.post('/staffs', async (req, res) => {
+      const staffApplication = req.body;
+      staffApplication.applicationStatus = 'pending';
+      staffApplication.appliedAt = new Date();
+      const email = staffApplication.email;
+
+      const applicationExists = await staffCollection.find
+        ({ email }).toArray();
+
+      if (applicationExists.length > 0) {
+        return res.status(400).send({ message: 'Application already exists' });
+      }
+      const result = await staffCollection.insertOne(staffApplication);
+      res.send(result);
+    });
+
+    app.get('/staffs', verifyFBToken, async (req, res) => {
+      const query = {}
+      const { email } = req.query;
+      if (email) {
+        query.email = email;
+      }
+      const options = { sort: { appliedAt: -1 } }
+
+      const cursor = staffCollection.find(query, options);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
 
     // user api
-    app.get('/users', async (req, res) => {
+    app.get('/users', verifyFBToken, async (req, res) => {
       const searchText = req.query.searchText;
       const query = {};
       const { email } = req.query;
@@ -122,7 +179,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get('/users/:id', async (req, res) => {
+    app.get('/users/:id', verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await userCollection.findOne(query);
@@ -145,7 +202,7 @@ async function run() {
 
 
     // issue api
-    app.get('/issues', async (req, res) => {
+    app.get('/issues', verifyFBToken, async (req, res) => {
       const query = {}
       const { email } = req.query;
 
@@ -162,7 +219,7 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     })
-    app.get('/issues/:id', async (req, res) => {
+    app.get('/issues/:id', verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await issueCollection.findOne(query);
