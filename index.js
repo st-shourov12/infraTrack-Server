@@ -25,22 +25,22 @@ app.use(cors({
 app.use(express.json());
 
 const verifyFBToken = async (req, res, next) => {
-    const token = req.headers.authorization;
+  const token = req.headers.authorization;
 
-    if (!token) {
-        return res.status(401).send({ message: 'unauthorized access' })
-    }
+  if (!token) {
+    return res.status(401).send({ message: 'unauthorized access' })
+  }
 
-    try {
-        const idToken = token.split(' ')[1];
-        const decoded = await admin.auth().verifyIdToken(idToken);
-        console.log('decoded in the token', decoded);
-        req.decoded_email = decoded.email;
-        next();
-    }
-    catch (err) {
-        return res.status(401).send({ message: 'unauthorized access' })
-    }
+  try {
+    const idToken = token.split(' ')[1];
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    console.log('decoded in the token', decoded);
+    req.decoded_email = decoded.email;
+    next();
+  }
+  catch (err) {
+    return res.status(401).send({ message: 'unauthorized access' })
+  }
 
 
 }
@@ -126,7 +126,10 @@ async function run() {
 
     app.get('/staffs', verifyFBToken, async (req, res) => {
       const query = {}
-      const { email } = req.query;
+      const { email, applicationStatus } = req.query;
+      if (applicationStatus) {
+        query.applicationStatus = applicationStatus;
+      }
       if (email) {
         query.email = email;
       }
@@ -136,6 +139,36 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     });
+
+    app.patch('/staffs/:id', verifyFBToken, async (req, res) => {
+      const id = req.params.id;
+      const updatedStaff = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: updatedStaff,
+      };
+      const result = await staffCollection.updateOne(filter, updateDoc);
+      // if(req.body.applicationStatus === 'approved'){
+      //   const email = updatedStaff.email;
+      //   const userQuery = { email: email };
+      //   const updateUser = {
+      //     $set : {
+      //       role: 'staff'
+      //     }
+      //   }
+      //     await userCollection.updateOne(userQuery, updateUser);
+      //   } 
+
+
+      res.send(result);
+    });
+
+    app.delete('/staffs/:id', verifyFBToken, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await staffCollection.deleteOne(query)
+      res.send(result)
+    })
 
     // user api
     app.get('/users', verifyFBToken, async (req, res) => {
@@ -202,27 +235,75 @@ async function run() {
 
 
     // issue api
-    app.get('/issues', verifyFBToken, async (req, res) => {
+    app.get('/issues', async (req, res) => {
       const query = {}
       const { email } = req.query;
 
       // /parcels?email=''&
       if (email) {
         query.reporterEmail = email;
+
+
       }
 
 
 
-      const options = { sort: { createdAt: -1 } }
+      const options = { sort: { createdAt: -1  } }
 
       const cursor = issueCollection.find(query, options);
       const result = await cursor.toArray();
       res.send(result);
     })
+
+    // app.get('/issues', async (req, res) => {
+    //   const { email } = req.query;
+
+    //   const matchStage = {};
+    //   if (email) {
+    //     matchStage.reporterEmail = email;
+    //   }
+
+    //   const pipeline = [
+    //     { $match: matchStage },
+
+    //     // timeline length add করা
+    //     {
+    //       $addFields: {
+    //         timelineCount: { $size: { $ifNull: ['$timeline', []] } }
+    //       }
+    //     },
+
+    //     // sort by createdAt + timelineCount
+    //     {
+    //       $sort: {
+
+    //         timelineCount: -1,
+    //         createdAt: -1
+            
+    //       }
+    //     }
+    //   ];
+
+    //   const result = await issueCollection.aggregate(pipeline).toArray();
+    //   res.send(result);
+    // });
+
+
     app.get('/issues/:id', verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await issueCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.patch('/issues/:id', verifyFBToken, async (req, res) => {
+      const id = req.params.id;
+      const updatedIssue = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: updatedIssue,
+      };
+      const result = await issueCollection.updateOne(filter, updateDoc);
       res.send(result);
     });
 
@@ -246,12 +327,16 @@ async function run() {
             message: 'You can post only 3 issues. Buy premium'
           });
         }
+
+      }
+      else {
+        issue.createdAt = new Date();
+
+        const result = await issueCollection.insertOne(issue);
+        res.send(result);
       }
 
-      issue.createdAt = new Date();
 
-      const result = await issueCollection.insertOne(issue);
-      res.send(result);
     });
 
     app.delete('/issues/:id', async (req, res) => {
@@ -266,14 +351,17 @@ async function run() {
 
 
     // Payment API
-    
+
     // get payment api using email query and also get by default all payments sorted by date
 
-    app.get('/payments', async (req, res) => {
+    app.get('/payments', verifyFBToken, async (req, res) => {
       const query = {}
-      const { email } = req.query;  
+      const { email } = req.query;
       if (email) {
         query.userEmail = email;
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: 'Forbidden Access' })
+        }
       }
       const options = { sort: { createdAt: -1 } }
 
@@ -440,23 +528,23 @@ async function run() {
     //   res.send({ userUpdateResult });
     // });
 
-  app.patch('/payment-success', async (req, res) => {
-    const sessionId = req.query.session_id;
-    if (!sessionId) return res.status(400).send({ message: 'Session ID required' });
+    app.patch('/payment-success', async (req, res) => {
+      const sessionId = req.query.session_id;
+      if (!sessionId) return res.status(400).send({ message: 'Session ID required' });
 
-    // duplicate prevent
-    const existingPayment = await paymentCollection.findOne({ sessionId });
-    if (existingPayment) {
+      // duplicate prevent
+      const existingPayment = await paymentCollection.findOne({ sessionId });
+      if (existingPayment) {
         return res.send({
-            paymentId: existingPayment._id,
-            transactionId: existingPayment.transactionId,
-            trackingId: existingPayment.trackingId,
+          paymentId: existingPayment._id,
+          transactionId: existingPayment.transactionId,
+          trackingId: existingPayment.trackingId,
         });
-    }
+      }
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    const paymentRecord = {
+      const paymentRecord = {
         sessionId: sessionId,
         userId: session.metadata.userId,
         userEmail: session.customer_email,
@@ -466,22 +554,22 @@ async function run() {
         trackingId: generateTrackingId(),
         invoiceId: `INV-${Date.now()}`,
         createdAt: new Date(),
-    };
+      };
 
-    const result = await paymentCollection.insertOne(paymentRecord);
+      const result = await paymentCollection.insertOne(paymentRecord);
 
-    await userCollection.updateOne(
+      await userCollection.updateOne(
         { _id: new ObjectId(session.metadata.userId) },
         { $set: { isPremium: true, role: 'premium-citizen' } }
-    );
+      );
 
-    res.send({
+      res.send({
         sessionId: paymentRecord.sessionId,
         paymentId: result.insertedId,
         transactionId: paymentRecord.transactionId,
         trackingId: paymentRecord.trackingId,
+      });
     });
-});
 
 
 
