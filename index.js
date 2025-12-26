@@ -197,7 +197,7 @@ async function run() {
 
     app.post('/users', async (req, res) => {
       const user = req.body;
-      user.role = 'user';
+      
       user.createdAt = new Date();
       user.isPremium = false;
       user.isBlock = false;
@@ -420,7 +420,7 @@ async function run() {
           {
             // Provide the exact Price ID (for example, price_1234) of the product you want to sell
             price_data: {
-              currency: 'usd',
+              currency: 'bdt',
               product_data: {
                 name: 'InfraTrack Premium Membership',
                 description: 'Get unlimited issue reporting and premium support with InfraTrack Premium Membership.',
