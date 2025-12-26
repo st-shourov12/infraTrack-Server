@@ -381,7 +381,7 @@ async function run() {
           {
             // Provide the exact Price ID (for example, price_1234) of the product you want to sell
             price_data: {
-              currency: 'usd',
+              currency: 'bdt',
               product_data: {
                 name: `Please buy subscription ${paymentInfo.userName}`,
                 description: 'Get unlimited issue reporting and premium support with InfraTrack Premium Membership.',
@@ -560,7 +560,7 @@ async function run() {
 
       await userCollection.updateOne(
         { _id: new ObjectId(session.metadata.userId) },
-        { $set: { isPremium: true, role: 'premium-citizen' } }
+        { $set: { isPremium: true } }
       );
 
       res.send({
