@@ -218,6 +218,12 @@ async function run() {
       const result = await userCollection.findOne(query);
       res.send(result);
     });
+    app.get('/users/:email/role', verifyFBToken, async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await userCollection.findOne(query);
+      res.send({role: result?.role || 'user'});
+    });
 
     app.patch('/users/:id', async (req, res) => {
       const id = req.params.id;
