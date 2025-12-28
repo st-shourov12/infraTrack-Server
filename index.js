@@ -176,7 +176,7 @@ async function run() {
 
     app.post('/users', async (req, res) => {
       const user = req.body;
-      
+
       user.createdAt = new Date();
       user.isPremium = false;
       user.isBlock = false;
@@ -233,7 +233,7 @@ async function run() {
 
 
 
-      const options = { sort: { createdAt: -1  } }
+      const options = { sort: { createdAt: -1 } }
 
       const cursor = issueCollection.find(query, options);
       const result = await cursor.toArray();
@@ -264,7 +264,7 @@ async function run() {
 
     //         timelineCount: -1,
     //         createdAt: -1
-            
+
     //       }
     //     }
     //   ];
@@ -422,6 +422,7 @@ async function run() {
           userEmail: paymentInfo.userEmail,
           userName: paymentInfo.userName,
           photo: paymentInfo.photo,
+          issueId: paymentInfo.issueId || '',
 
         },
         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
@@ -543,10 +544,42 @@ async function run() {
 
       const result = await paymentCollection.insertOne(paymentRecord);
 
-      await userCollection.updateOne(
-        { _id: new ObjectId(session.metadata.userId) },
-        { $set: { isPremium: true } }
-      );
+      if (session.amount_total / 100 === 1000) {
+
+        await userCollection.updateOne(
+          { _id: new ObjectId(session.metadata.userId) },
+          { $set: { isPremium: true } }
+        );
+      } else if (session.amount_total / 100 === 100) {
+
+        await issueCollection.updateOne(
+          { _id: new ObjectId(session.metadata.issueId) },
+          {
+            $set:
+            {
+
+              priority: "High",
+              boosted: true,
+              timeline: [
+                {
+                  id: 3,
+                  status: "boost",
+                  message: "Issue priority boosted to High through payment (৳100)",
+                  updatedBy: `${session.customer_email}`,
+                  role: "user",
+                  date: new Date().toISOString()
+                },
+                ...issue.timeline
+              ]
+            }
+          }
+        );
+      }
+
+      // await userCollection.updateOne(
+      //   { _id: new ObjectId(session.metadata.userId) },
+      //   { $set: { isPremium: true } }
+      // );
 
       res.send({
         sessionId: paymentRecord.sessionId,
