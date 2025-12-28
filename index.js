@@ -54,6 +54,7 @@ function generateTrackingId() {
   return `${prefix}-${date}-${random}`;
 }
 
+const verifyAdmin =
 
 
 
@@ -180,7 +181,9 @@ async function run() {
       user.createdAt = new Date();
       user.isPremium = false;
       user.isBlock = false;
+      user.isUpvote = true;
       const email = user.email;
+
       const userExists = await userCollection.findOne({ email })
 
       if (userExists) {
@@ -302,7 +305,7 @@ async function run() {
       }
 
       // only limit normal users
-      if (issue.userRole === 'user') {
+      if (issue.userRole === 'user' || issue.userRole === 'staff') {
         const userIssueCount = await issueCollection.countDocuments({
           reporterEmail: issue.reporterEmail,
         });
@@ -556,7 +559,7 @@ async function run() {
 
         const result = await paymentCollection.insertOne(paymentRecord);
 
-        // ⭐ Premium User (৳1000)
+        
         if (amount === 1000) {
           await userCollection.updateOne(
             { _id: new ObjectId(session.metadata.userId) },
@@ -564,7 +567,7 @@ async function run() {
           );
         }
 
-        // 🚀 Issue Boost (৳100)
+      
         if (amount === 100 && session.metadata.issueId) {
           await issueCollection.updateOne(
             { _id: new ObjectId(session.metadata.issueId) },
