@@ -54,7 +54,7 @@ function generateTrackingId() {
   return `${prefix}-${date}-${random}`;
 }
 
-const verifyAdmin =
+// const verifyAdmin =
 
 
 
@@ -151,6 +151,47 @@ async function run() {
     })
 
     // user api
+
+    app.post('/create-user', verifyFBToken, async (req, res) => {
+
+      const { email, password, role, displayName } = req.body;
+
+      try {
+
+        const userRecord = await admin.auth().createUser({
+          email,
+          password,
+          displayName,
+        });
+
+
+        await userCollection.insertOne({
+          uid: userRecord.uid,
+          email,
+          displayName,
+          role: role || 'user',
+          createdAt: new Date(),
+          isBlock: false,
+          isPremium: false,
+          isUpvote: true
+
+        });
+
+        res.send({
+          success: true,
+          uid: userRecord.uid,
+          message: 'User created successfully',
+        });
+
+      } catch (error) {
+        res.status(400).send({ message: error.message });
+      }
+    }
+    );
+
+
+
+
     app.get('/users', verifyFBToken, async (req, res) => {
       const searchText = req.query.searchText;
       const query = {};
@@ -296,36 +337,95 @@ async function run() {
     });
 
 
-    app.post('/issues', async (req, res) => {
-      const issue = req.body;
+    app.post('/issues',  async (req, res) => {
+      try {
+        const issue = req.body;
 
-      // safety check
-      if (!issue?.reporterEmail || !issue?.userRole) {
-        return res.status(400).send({ message: 'Invalid issue data' });
-      }
+        
+        const email = issue.reporterEmail;
 
-      // only limit normal users
-      if (issue.userRole === 'user' || issue.userRole === 'staff') {
-        const userIssueCount = await issueCollection.countDocuments({
-          reporterEmail: issue.reporterEmail,
-        });
+      
+        const user = await userCollection.findOne({ email });
 
-        if (userIssueCount >= 3) {
-          return res.status(403).send({
-            message: 'You can post only 3 issues. Buy premium'
-          });
+        if (!user) {
+          return res.status(404).send({ message: 'User not found' });
         }
 
-      }
-      else {
-        issue.createdAt = new Date();
+        //  Blocked user
+        if (user.isBlock) {   
+          return res.status(403).send({ message: 'You are blocked by admin' });
+        }
 
-        const result = await issueCollection.insertOne(issue);
+        // const xrole = user.role === 'user' || user.role === 'staff'
+
+        // console.log(xrole , 'sssss');
+
+        // Normal user limitation (NOT premium)
+        if (!user.isPremium && user.role === 'user') {
+          const userIssueCount = await issueCollection.countDocuments({
+            reporterEmail: email,
+          });
+
+          if (userIssueCount >= 3) {
+            return res.status(403).send({
+              message: 'You can post only 3 issues. Buy premium',
+            });
+          }
+        }
+
+        
+        const issueData = {
+          ...issue,                    // non-critical fields
+          reporterEmail: email,       
+          userRole: user.role,        
+          createdAt: new Date(),
+          boosted: false,
+          upvoted: 0,
+          upvotedBy: null,
+          status: 'pending',
+        };
+
+        const result = await issueCollection.insertOne(issueData);
         res.send(result);
+
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: 'Internal Server Error' });
       }
-
-
     });
+
+
+
+    // app.post('/issues', async (req, res) => {
+    //   const issue = req.body;
+
+    //   // safety check
+    //   if (!issue?.reporterEmail || !issue?.userRole) {
+    //     return res.status(400).send({ message: 'Invalid issue data' });
+    //   }
+
+    //   // only limit normal users
+
+    //     const userIssueCount = await issueCollection.countDocuments({
+    //       reporterEmail: issue.reporterEmail,
+    //     });
+
+    //     if (userIssueCount >= 3) {
+    //       return res.status(403).send({
+    //         message: 'You can post only 3 issues. Buy premium'
+    //       });
+    //     }
+
+
+    //   else {
+    //     issue.createdAt = new Date();
+
+    //     const result = await issueCollection.insertOne(issue);
+    //     res.send(result);
+    //   }
+
+
+    // });
 
     app.delete('/issues/:id', async (req, res) => {
       const id = req.params.id;
@@ -525,7 +625,7 @@ async function run() {
           return res.status(400).send({ message: 'Session ID required' });
         }
 
-      
+
         const existingPayment = await paymentCollection.findOne({ sessionId });
         if (existingPayment) {
           return res.send({
@@ -535,7 +635,7 @@ async function run() {
           });
         }
 
-   
+
         const session = await stripe.checkout.sessions.retrieve(sessionId);
 
         if (!session?.metadata?.userId) {
@@ -559,7 +659,7 @@ async function run() {
 
         const result = await paymentCollection.insertOne(paymentRecord);
 
-        
+
         if (amount === 1000) {
           await userCollection.updateOne(
             { _id: new ObjectId(session.metadata.userId) },
@@ -567,7 +667,7 @@ async function run() {
           );
         }
 
-      
+
         if (amount === 100 && session.metadata.issueId) {
           await issueCollection.updateOne(
             { _id: new ObjectId(session.metadata.issueId) },
