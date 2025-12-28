@@ -383,6 +383,7 @@ async function run() {
           userEmail: paymentInfo.userEmail,
           userName: paymentInfo.userName,
           photo: paymentInfo.photo,
+          issueId: paymentInfo.issueId || null,
 
         },
         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
@@ -515,6 +516,98 @@ async function run() {
     // });
 
     app.patch('/payment-success', async (req, res) => {
+      try {
+        const sessionId = req.query.session_id;
+        if (!sessionId) {
+          return res.status(400).send({ message: 'Session ID required' });
+        }
+
+      
+        const existingPayment = await paymentCollection.findOne({ sessionId });
+        if (existingPayment) {
+          return res.send({
+            paymentId: existingPayment._id,
+            transactionId: existingPayment.transactionId,
+            trackingId: existingPayment.trackingId,
+          });
+        }
+
+   
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        if (!session?.metadata?.userId) {
+          return res.status(400).send({ message: 'Invalid session metadata' });
+        }
+
+        const amount = session.amount_total / 100;
+
+
+        const paymentRecord = {
+          sessionId,
+          userId: session.metadata.userId,
+          userEmail: session.customer_email,
+          userName: session.metadata.userName,
+          amount,
+          transactionId: session.payment_intent,
+          trackingId: generateTrackingId(),
+          invoiceId: `INV-${Date.now()}`,
+          createdAt: new Date(),
+        };
+
+        const result = await paymentCollection.insertOne(paymentRecord);
+
+        // ⭐ Premium User (৳1000)
+        if (amount === 1000) {
+          await userCollection.updateOne(
+            { _id: new ObjectId(session.metadata.userId) },
+            { $set: { isPremium: true } }
+          );
+        }
+
+        // 🚀 Issue Boost (৳100)
+        if (amount === 100 && session.metadata.issueId) {
+          await issueCollection.updateOne(
+            { _id: new ObjectId(session.metadata.issueId) },
+            {
+              $set: {
+                priority: "High",
+                boosted: true,
+              },
+              $push: {
+                timeline: {
+                  $each: [
+                    {
+                      id: 3,
+                      status: "boost",
+                      message: "Issue priority boosted to High through payment (৳100)",
+                      updatedBy: session.customer_email,
+                      role: "user",
+                      date: new Date().toISOString(),
+                    }
+                  ],
+                  $position: 0
+                }
+              }
+            }
+          );
+        }
+
+        // ✅ Response
+        res.send({
+          sessionId,
+          paymentId: result.insertedId,
+          transactionId: paymentRecord.transactionId,
+          trackingId: paymentRecord.trackingId,
+        });
+
+      } catch (error) {
+        console.error('Payment Success Error:', error);
+        res.status(500).send({ message: 'Internal Server Error' });
+      }
+    });
+
+
+    app.patch('/payment-succe', async (req, res) => {
       const sessionId = req.query.session_id;
       if (!sessionId) return res.status(400).send({ message: 'Session ID required' });
 
@@ -552,34 +645,56 @@ async function run() {
         );
       } else if (session.amount_total / 100 === 100) {
 
+        //   await issueCollection.updateOne(
+        //     { _id: new ObjectId(session.metadata.issueId) },
+        //     {
+        //       $set:
+        //       {
+
+        //         priority: "High",
+        //         boosted: true,
+        //         timeline: [
+        //           {
+        //             id: 3,
+        //             status: "boost",
+        //             message: "Issue priority boosted to High through payment (৳100)",
+        //             updatedBy: `${session.customer_email}`,
+        //             role: "user",
+        //             date: new Date().toISOString()
+        //           },
+        //           ...issue.timeline
+        //         ]
+        //       }
+        //     }
+        //   );
+        // }
         await issueCollection.updateOne(
           { _id: new ObjectId(session.metadata.issueId) },
           {
-            $set:
-            {
-
+            $set: {
               priority: "High",
-              boosted: true,
-              timeline: [
-                {
-                  id: 3,
-                  status: "boost",
-                  message: "Issue priority boosted to High through payment (৳100)",
-                  updatedBy: `${session.customer_email}`,
-                  role: "user",
-                  date: new Date().toISOString()
-                },
-                ...issue.timeline
-              ]
+              boosted: true
+            },
+            $push: {
+              timeline: {
+                $each: [
+                  {
+                    id: 3,
+                    status: "boost",
+                    message: "Issue priority boosted to High through payment (৳100)",
+                    updatedBy: session.customer_email,
+                    role: "user",
+                    date: new Date().toISOString()
+                  }
+                ],
+                $position: 0
+              }
             }
           }
         );
       }
 
-      // await userCollection.updateOne(
-      //   { _id: new ObjectId(session.metadata.userId) },
-      //   { $set: { isPremium: true } }
-      // );
+
 
       res.send({
         sessionId: paymentRecord.sessionId,
