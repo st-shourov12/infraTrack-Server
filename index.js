@@ -264,25 +264,86 @@ async function run() {
 
 
     // issue api
+
+
+
+
     app.get('/issues', async (req, res) => {
-      const query = {}
-      const { email } = req.query;
+      try {
+        const {email,status,priority,category,region,district,upzila,role,boosted } = req.query;
 
-      // /parcels?email=''&
-      if (email) {
-        query.reporterEmail = email;
+        const query = {};
+
+   
+        if (email) {
+          query.reporterEmail = email;
+        }
 
 
+        if (status) {
+          query.status = status;
+        }
+
+        if (priority) {
+          query.priority = priority;
+        }
+
+        if (category) {
+          query.category = category;
+        }
+
+        if (region) {
+          query.region = region;
+        }
+        if (district) {
+          query.district = district;
+        }
+        if (upzila) {
+          query.upzila = upzila;
+        }
+
+
+        if (role) {
+          query.userRole = role;
+        }
+
+        if (boosted !== undefined) {
+          query.boosted = boosted === 'true';
+        }
+
+        const options = {
+          sort: { createdAt: -1 }
+        };
+
+        const issues = await issueCollection.find(query, options).toArray();
+        res.send(issues);
+
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: 'Failed to fetch issues' });
       }
+    });
+    
+
+    // app.get('/issues', async (req, res) => {
+    //   const query = {}
+    //   const { email } = req.query;
+
+    //   // /parcels?email=''&
+    //   if (email) {
+    //     query.reporterEmail = email;
+
+
+    //   }
 
 
 
-      const options = { sort: { createdAt: -1 } }
+    //   const options = { sort: { createdAt: -1 } }
 
-      const cursor = issueCollection.find(query, options);
-      const result = await cursor.toArray();
-      res.send(result);
-    })
+    //   const cursor = issueCollection.find(query, options);
+    //   const result = await cursor.toArray();
+    //   res.send(result);
+    // })
 
     // app.get('/issues', async (req, res) => {
     //   const { email } = req.query;
@@ -337,14 +398,14 @@ async function run() {
     });
 
 
-    app.post('/issues',  async (req, res) => {
+    app.post('/issues', async (req, res) => {
       try {
         const issue = req.body;
 
-        
+
         const email = issue.reporterEmail;
 
-      
+
         const user = await userCollection.findOne({ email });
 
         if (!user) {
@@ -352,7 +413,7 @@ async function run() {
         }
 
         //  Blocked user
-        if (user.isBlock) {   
+        if (user.isBlock) {
           return res.status(403).send({ message: 'You are blocked by admin' });
         }
 
@@ -373,11 +434,11 @@ async function run() {
           }
         }
 
-        
+
         const issueData = {
           ...issue,                    // non-critical fields
-          reporterEmail: email,       
-          userRole: user.role,        
+          reporterEmail: email,
+          userRole: user.role,
           createdAt: new Date(),
           boosted: false,
           upvoted: 0,
