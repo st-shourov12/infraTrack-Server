@@ -8,8 +8,13 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const app = express();
-var serviceAccount = require('./infratrack_fb_sdk.json');
+// var serviceAccount = require('./infratrack_fb_sdk.json');
 const { time } = require('console');
+
+
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -18,10 +23,12 @@ admin.initializeApp({
 
 
 
-app.use(cors({
-  origin: 'http://localhost:5173',  // your React/Vite dev server
-  credentials: true
-}));
+app.use(cors(
+//   {
+//   origin: 'http://localhost:5173' || 'https://infratrackservice.netlify.app', 
+//   credentials: true
+// }
+));
 
 app.use(express.json());
 
@@ -56,12 +63,6 @@ function generateTrackingId() {
 
   return `${prefix}-${date}-${random}`;
 }
-
-// const verifyAdmin =
-
-
-
-
 
 
 
@@ -108,7 +109,7 @@ async function run() {
 
     app.post('/staffs', verifyFBToken, async (req, res) => {
       const staffApplication = req.body;
-      staffApplication.applicationStatus = 'pending';
+     
       staffApplication.appliedAt = new Date();
       const email = staffApplication.email;
 
@@ -159,7 +160,7 @@ async function run() {
 
     app.post('/create-user', verifyFBToken, verifyAdmin, async (req, res) => {
 
-      const { email, password, role, displayName } = req.body;
+      const { email, password, role, displayName, profilePhoto } = req.body;
 
       try {
 
@@ -170,11 +171,12 @@ async function run() {
         });
 
 
-        await userCollection.insertOne({
+        const result =  await userCollection.insertOne({
           uid: userRecord.uid,
           email,
           displayName,
-          role: role || 'user',
+          profilePhoto,
+          role: 'staff' || role,
           createdAt: new Date(),
           isBlock: false,
           isPremium: false,
@@ -205,15 +207,7 @@ async function run() {
         query.email = email;
       }
 
-      // if (searchText) {
-      //   // query.displayName = {$regex: searchText, $options: 'i'}
 
-      //   query.$or = [
-      //     { displayName: { $regex: searchText, $options: 'i' } },
-      //     { email: { $regex: searchText, $options: 'i' } },
-      //   ]
-
-      // }
 
       const cursor = userCollection.find(query).sort({ createdAt: -1 });
       const result = await cursor.toArray();
@@ -246,7 +240,7 @@ async function run() {
       const result = await userCollection.findOne(query);
       res.send(result);
     });
-    app.get('/users/:email/role', verifyFBToken, verifyAdmin, async (req, res) => {
+    app.get('/users/:email/role', verifyFBToken, async (req, res) => {
       const email = req.params.email;
       const query = { email: email };
       const result = await userCollection.findOne(query);
@@ -274,101 +268,6 @@ async function run() {
 
 
 
-    // app.get('/issues', async (req, res) => {
-    //   try {
-    //     const { email, status, priority, category, region, district, upzila, role, boosted } = req.query;
-
-    //     const query = {};
-
-
-    //     if (email) {
-    //       query.reporterEmail = email;
-    //     }
-
-
-    //     if (status) {
-    //       query.status = status;
-    //     }
-
-    //     if (priority) {
-    //       query.priority = priority;
-    //     }
-
-    //     if (category) {
-    //       query.category = category;
-    //     }
-
-    //     if (region) {
-    //       query.region = region;
-    //     }
-    //     if (district) {
-    //       query.district = district;
-    //     }
-    //     if (upzila) {
-    //       query.upzila = upzila;
-    //     }
-
-
-    //     if (role) {
-    //       query.userRole = role;
-    //     }
-
-    //     if (boosted !== undefined) {
-    //       query.boosted = boosted === 'true';
-    //     }
-
-    //     const pipeline = [
-    //       {
-    //         $addFields: {
-    //           priorityOrder: {
-    //             $switch: {
-    //               branches: [
-    //                 { case: { $eq: ['$priority', 'High'] }, then: 1 },
-    //                 { case: { $eq: ['$priority', 'Medium'] }, then: 2 },
-    //                 { case: { $eq: ['$priority', 'Normal'] }, then: 3 },
-    //               ],
-    //               default: 4
-    //             }
-    //           },
-    //           statusOrder : {
-    //             $switch: {
-    //               branches : [
-    //                 {
-    //                   case : {$eq : ['$status' , 'pending'], then: 1}
-    //                 },
-    //                 {
-    //                   case : {$eq : ['$status' , 'in-progress'], then: 2}
-    //                 },
-    //                 {
-    //                   case : {$eq : ['$status' , 'resolved'], then: 3}
-    //                 },
-    //                 {
-    //                   case : {$eq : ['$status' , 'closed'], then: 4}
-    //                 },
-    //               ],
-    //               default: 5
-    //             }
-    //           }
-    //         }
-    //       },
-    //       {
-    //         $sort: {
-    //           priorityOrder: 1,
-    //           statusOrder : 1,
-    //           createdAt: -1
-    //         }
-    //       }
-    //     ];
-
-    //     const result = await issueCollection.aggregate(pipeline).toArray();
-    //     res.send(result);
-
-    //   } catch (error) {
-    //     console.error(error);
-    //     res.status(500).send({ message: 'Failed to fetch issues' });
-    //   }
-    // });
-    // 11
 
 
 
@@ -442,58 +341,6 @@ async function run() {
 
 
 
-    // app.get('/issues', async (req, res) => {
-    //   const query = {}
-    //   const { email } = req.query;
-
-    //   // /parcels?email=''&
-    //   if (email) {
-    //     query.reporterEmail = email;
-
-
-    //   }
-
-
-
-    //   const options = { sort: { createdAt: -1 } }
-
-    //   const cursor = issueCollection.find(query, options);
-    //   const result = await cursor.toArray();
-    //   res.send(result);
-    // })
-
-    // app.get('/issues', async (req, res) => {
-    //   const { email } = req.query;
-
-    //   const matchStage = {};
-    //   if (email) {
-    //     matchStage.reporterEmail = email;
-    //   }
-
-    //   const pipeline = [
-    //     { $match: matchStage },
-
-    //     // timeline length add করা
-    //     {
-    //       $addFields: {
-    //         timelineCount: { $size: { $ifNull: ['$timeline', []] } }
-    //       }
-    //     },
-
-    //     // sort by createdAt + timelineCount
-    //     {
-    //       $sort: {
-
-    //         timelineCount: -1,
-    //         createdAt: -1
-
-    //       }
-    //     }
-    //   ];
-
-    //   const result = await issueCollection.aggregate(pipeline).toArray();
-    //   res.send(result);
-    // });
 
 
     app.get('/issues/:id', verifyFBToken, async (req, res) => {
@@ -816,7 +663,7 @@ async function run() {
 
     // });
 
-    app.delete('/issues/:id', async (req, res) => {
+    app.delete('/issues/:id', verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
 
@@ -928,84 +775,7 @@ async function run() {
       // });
     });
 
-    // app.patch('/payment-success', async (req, res) => {
-    //   const sessionId = req.query.session_id;
 
-    //   if (!sessionId) {
-    //     return res.status(400).send({ message: 'Session ID required' });
-    //   }
-
-    //   //  already exists?
-    //   const existingPayment = await paymentCollection.findOne({ sessionId });
-    //   if (existingPayment) {
-    //     return res.send({ message: 'Payment already recorded' });
-    //   }
-
-    //   const session = await stripe.checkout.sessions.retrieve(
-    //     sessionId,
-    //     { expand: ['invoice'] }
-    //   );
-
-    //   const paymentRecord = {
-    //     sessionId,
-    //     userId: session.metadata.userId,
-    //     userEmail: session.customer_email,
-    //     userName: session.metadata.userName,
-    //     amount: session.amount_total / 100,
-    //     transactionId: session.payment_intent,
-    //     invoicePdf: session.invoice?.invoice_pdf,
-    //     createdAt: new Date(),
-    //   };
-
-    //   await paymentCollection.insertOne(paymentRecord);
-
-    //   await userCollection.updateOne(
-    //     { _id: new ObjectId(session.metadata.userId) },
-    //     { $set: { isPremium: true, role: 'premium-citizen' } }
-    //   );
-
-    //   res.send({ success: true });
-    // });
-
-
-
-    // app.patch('/payment-success', async (req, res) => {
-    //   const sessionId = req.query.session_id;
-
-    //   if (!sessionId) {
-    //     return res.status(400).send({ message: 'Session ID is required' });
-    //   } 
-    //   const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-
-    //   const id = session.metadata.userId;
-    //   // const { userId, userEmail, userName, photo, amount, transactionId } = req.body;
-    //   const paymentRecord = {
-    //     sessionId: sessionId,
-    //     userId: session.metadata.userId,
-    //     userEmail: session.customer_email,
-    //     userName: session.metadata.userName, 
-    //     photo: session.metadata.photo,
-    //     amount: session.amount_total / 100,
-    //     transactionId : session.payment_intent,
-    //     premiumCreatedAt: new Date(),
-    //   };  
-    //   const result = await paymentCollection.insertOne(paymentRecord);
-    //   res.send({success: true, paymentInfo: result});
-    //   // update user to premium
-
-
-    //   const filter = { _id: new ObjectId(id) };
-    //   const updateDoc = { 
-    //     $set: {   
-    //       role: 'premium-citizen',
-    //       isPremium: true ,
-    //       premiumSince: new Date()
-    //     },
-    //   };
-    //   const userUpdateResult =  await userCollection.updateOne(filter, updateDoc);
-    //   res.send({ userUpdateResult });
-    // });
 
     app.patch('/payment-success', async (req, res) => {
       try {
@@ -1283,8 +1053,8 @@ async function run() {
 
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
