@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const app = express();
 var serviceAccount = require('./infratrack_fb_sdk.json');
+const { time } = require('console');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -41,9 +42,11 @@ const verifyFBToken = async (req, res, next) => {
   catch (err) {
     return res.status(401).send({ message: 'unauthorized access' })
   }
-
+ 
 
 }
+
+
 
 
 function generateTrackingId() {
@@ -86,17 +89,30 @@ async function run() {
     const staffCollection = db.collection('staffs');
 
 
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await userCollection.findOne(query);
+
+
+      if (!user || user.role !== 'admin') {
+        return res.status(403).send({ message: 'forbidden access' })
+      }
+      next()
+
+    }
+
+
     // staff api
 
 
-    app.post('/staffs', async (req, res) => {
+    app.post('/staffs', verifyFBToken, async (req, res) => {
       const staffApplication = req.body;
       staffApplication.applicationStatus = 'pending';
       staffApplication.appliedAt = new Date();
       const email = staffApplication.email;
 
-      const applicationExists = await staffCollection.find
-        ({ email }).toArray();
+      const applicationExists = await staffCollection.find({ email }).toArray();
 
       if (applicationExists.length > 0) {
         return res.status(400).send({ message: 'Application already exists' });
@@ -129,17 +145,6 @@ async function run() {
         $set: updatedStaff,
       };
       const result = await staffCollection.updateOne(filter, updateDoc);
-      // if(req.body.applicationStatus === 'approved'){
-      //   const email = updatedStaff.email;
-      //   const userQuery = { email: email };
-      //   const updateUser = {
-      //     $set : {
-      //       role: 'staff'
-      //     }
-      //   }
-      //     await userCollection.updateOne(userQuery, updateUser);
-      //   } 
-
 
       res.send(result);
     });
@@ -152,7 +157,7 @@ async function run() {
 
     // user api
 
-    app.post('/create-user', verifyFBToken, async (req, res) => {
+    app.post('/create-user', verifyFBToken, verifyAdmin, async (req, res) => {
 
       const { email, password, role, displayName } = req.body;
 
@@ -193,24 +198,24 @@ async function run() {
 
 
     app.get('/users', verifyFBToken, async (req, res) => {
-      const searchText = req.query.searchText;
+      // const searchText = req.query.searchText;
       const query = {};
       const { email } = req.query;
       if (email) {
         query.email = email;
       }
 
-      if (searchText) {
-        // query.displayName = {$regex: searchText, $options: 'i'}
+      // if (searchText) {
+      //   // query.displayName = {$regex: searchText, $options: 'i'}
 
-        query.$or = [
-          { displayName: { $regex: searchText, $options: 'i' } },
-          { email: { $regex: searchText, $options: 'i' } },
-        ]
+      //   query.$or = [
+      //     { displayName: { $regex: searchText, $options: 'i' } },
+      //     { email: { $regex: searchText, $options: 'i' } },
+      //   ]
 
-      }
+      // }
 
-      const cursor = userCollection.find(query).sort({ createdAt: -1 }).limit(5);
+      const cursor = userCollection.find(query).sort({ createdAt: -1 });
       const result = await cursor.toArray();
       res.send(result);
     });
@@ -241,12 +246,13 @@ async function run() {
       const result = await userCollection.findOne(query);
       res.send(result);
     });
-    // app.get('/users/:email/role', verifyFBToken, async (req, res) => {
-    //   const email = req.params.email;
-    //   const query = { email: email };
-    //   const result = await userCollection.findOne(query);
-    //   res.send({role: result?.role });
-    // });
+    app.get('/users/:email/role', verifyFBToken, verifyAdmin, async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await userCollection.findOne(query);
+      console.log('role', result)
+      res.send({ role: result?.role });
+    });
 
     app.patch('/users/:id', async (req, res) => {
       const id = req.params.id;
@@ -268,62 +274,173 @@ async function run() {
 
 
 
+    // app.get('/issues', async (req, res) => {
+    //   try {
+    //     const { email, status, priority, category, region, district, upzila, role, boosted } = req.query;
+
+    //     const query = {};
+
+
+    //     if (email) {
+    //       query.reporterEmail = email;
+    //     }
+
+
+    //     if (status) {
+    //       query.status = status;
+    //     }
+
+    //     if (priority) {
+    //       query.priority = priority;
+    //     }
+
+    //     if (category) {
+    //       query.category = category;
+    //     }
+
+    //     if (region) {
+    //       query.region = region;
+    //     }
+    //     if (district) {
+    //       query.district = district;
+    //     }
+    //     if (upzila) {
+    //       query.upzila = upzila;
+    //     }
+
+
+    //     if (role) {
+    //       query.userRole = role;
+    //     }
+
+    //     if (boosted !== undefined) {
+    //       query.boosted = boosted === 'true';
+    //     }
+
+    //     const pipeline = [
+    //       {
+    //         $addFields: {
+    //           priorityOrder: {
+    //             $switch: {
+    //               branches: [
+    //                 { case: { $eq: ['$priority', 'High'] }, then: 1 },
+    //                 { case: { $eq: ['$priority', 'Medium'] }, then: 2 },
+    //                 { case: { $eq: ['$priority', 'Normal'] }, then: 3 },
+    //               ],
+    //               default: 4
+    //             }
+    //           },
+    //           statusOrder : {
+    //             $switch: {
+    //               branches : [
+    //                 {
+    //                   case : {$eq : ['$status' , 'pending'], then: 1}
+    //                 },
+    //                 {
+    //                   case : {$eq : ['$status' , 'in-progress'], then: 2}
+    //                 },
+    //                 {
+    //                   case : {$eq : ['$status' , 'resolved'], then: 3}
+    //                 },
+    //                 {
+    //                   case : {$eq : ['$status' , 'closed'], then: 4}
+    //                 },
+    //               ],
+    //               default: 5
+    //             }
+    //           }
+    //         }
+    //       },
+    //       {
+    //         $sort: {
+    //           priorityOrder: 1,
+    //           statusOrder : 1,
+    //           createdAt: -1
+    //         }
+    //       }
+    //     ];
+
+    //     const result = await issueCollection.aggregate(pipeline).toArray();
+    //     res.send(result);
+
+    //   } catch (error) {
+    //     console.error(error);
+    //     res.status(500).send({ message: 'Failed to fetch issues' });
+    //   }
+    // });
+    // 11
+
+
+
     app.get('/issues', async (req, res) => {
       try {
-        const {email,status,priority,category,region,district,upzila,role,boosted } = req.query;
+        const { email, status, priority, category, region, district, upzila, role } = req.query;
 
         const query = {};
 
-   
-        if (email) {
-          query.reporterEmail = email;
+        if (email) query.reporterEmail = email;
+        if (status) query.status = status;
+        if (priority) query.priority = priority;
+        if (category) query.category = category;
+        if (region) query.region = region;
+        if (district) query.district = district;
+        if (upzila) query.upzila = upzila;
+        if (role) query.userRole = role;
+        // if (boosted !== undefined) query.boosted = boosted === 'true';
+
+        if(status === 'closed'){
+          query.closedAt = { $exists: true };
         }
 
+        const pipeline = [
+          {
+            $match: query   // 
+          },
+          {
+            $addFields: {
+              priorityOrder: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ['$priority', 'High'] }, then: 1 },
+                    { case: { $eq: ['$priority', 'Medium'] }, then: 2 },
+                    { case: { $eq: ['$priority', 'Low'] }, then: 3 },
+                  ],
+                  default: 4
+                }
+              },
+              statusOrder: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ['$status', 'pending'] }, then: 1 },
+                    { case: { $eq: ['$status', 'in-progress'] }, then: 2 },
+                    { case: { $eq: ['$status', 'resolved'] }, then: 3 },
+                    { case: { $eq: ['$status', 'closed'] }, then: 4 },
+                  ],
+                  default: 5
+                }
+              }
+            }
+          },
+          {
+            $sort: {
+              closedAt: -1, // for closed issues, sort by closedAt first
+              priorityOrder: 1,  // High → Medium → Low
+              statusOrder: 1,    // pending → closed
+              createdAt: -1      // latest first
+            }
+          }
+        ];
 
-        if (status) {
-          query.status = status;
-        }
-
-        if (priority) {
-          query.priority = priority;
-        }
-
-        if (category) {
-          query.category = category;
-        }
-
-        if (region) {
-          query.region = region;
-        }
-        if (district) {
-          query.district = district;
-        }
-        if (upzila) {
-          query.upzila = upzila;
-        }
-
-
-        if (role) {
-          query.userRole = role;
-        }
-
-        if (boosted !== undefined) {
-          query.boosted = boosted === 'true';
-        }
-
-        const options = {
-          sort: { createdAt: -1 }
-        };
-
-        const issues = await issueCollection.find(query, options).toArray();
-        res.send(issues);
+        const result = await issueCollection.aggregate(pipeline).toArray();
+        res.send(result);
 
       } catch (error) {
         console.error(error);
         res.status(500).send({ message: 'Failed to fetch issues' });
       }
     });
-    
+
+
 
     // app.get('/issues', async (req, res) => {
     //   const query = {}
@@ -379,7 +496,7 @@ async function run() {
     // });
 
 
-    app.get('/issues/:id', async (req, res) => {
+    app.get('/issues/:id', verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await issueCollection.findOne(query);
@@ -398,52 +515,35 @@ async function run() {
     });
 
 
-    app.post('/issues', async (req, res) => {
+    app.post('/issues', verifyFBToken, async (req, res) => {
       try {
         const issue = req.body;
-
-
-        const email = issue.reporterEmail;
-
+        const email = req.decoded_email;
 
         const user = await userCollection.findOne({ email });
+        if (!user) return res.status(404).send({ message: 'User not found' });
 
-        if (!user) {
-          return res.status(404).send({ message: 'User not found' });
-        }
-
-        //  Blocked user
         if (user.isBlock) {
           return res.status(403).send({ message: 'You are blocked by admin' });
         }
 
-        // const xrole = user.role === 'user' || user.role === 'staff'
-
-        // console.log(xrole , 'sssss');
-
-        // Normal user limitation (NOT premium)
         if (!user.isPremium && user.role === 'user') {
-          const userIssueCount = await issueCollection.countDocuments({
-            reporterEmail: email,
-          });
-
-          if (userIssueCount >= 3) {
+          const count = await issueCollection.countDocuments({ reporterEmail: email });
+          if (count >= 3) {
             return res.status(403).send({
               message: 'You can post only 3 issues. Buy premium',
             });
           }
         }
 
-
         const issueData = {
-          ...issue,                    // non-critical fields
+          ...issue,
           reporterEmail: email,
           userRole: user.role,
           createdAt: new Date(),
+          status: 'pending',
           boosted: false,
           upvoted: 0,
-          upvotedBy: null,
-          status: 'pending',
         };
 
         const result = await issueCollection.insertOne(issueData);
@@ -454,6 +554,234 @@ async function run() {
         res.status(500).send({ message: 'Internal Server Error' });
       }
     });
+
+
+
+
+
+
+
+    // app.get('/allIssue' , async (req, res ) =>{
+    //   try{
+
+    //     const {limit , skip } = req.query
+    //     console.log(limit);
+
+    //     const issues = await issueCollection.find().limit(Number(limit)).skip(Number(skip)).toArray()
+
+    //     const count = await issueCollection.countDocuments()
+    //     res.send({  issues , count})
+
+    //   } catch (error) {
+    //     res.status(500).send({ message: 'Internal Server Error'})
+    //   }
+
+    // })
+
+    app.get('/payments', verifyFBToken, async (req, res) => {
+      const query = {}
+      const { email } = req.query;
+      if (email) {
+        query.userEmail = email;
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: 'Forbidden Access' })
+        }
+      }
+      const options = { sort: { createdAt: -1 } }
+
+      const cursor = paymentCollection.find(query, options);
+      const result = await cursor.toArray();
+      res.send(result);
+    }
+    );
+    app.get('/latestResolve', async (req, res) => {
+      try {
+        const { status } = req.query;
+
+        if (!status) {
+          return res.status(400).send({ message: 'status is required' });
+        }
+
+        if (status === 'closed') {
+          const issues = await issueCollection
+            .find({ status: 'closed' })
+            .sort({ closedAt: -1 }) 
+            .limit(6)
+            .toArray();
+
+          return res.send(issues);
+        }
+
+        res.send([]);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: 'Server error' });
+      }
+    });
+
+
+
+    app.get('/allIsses', async (req, res) => {
+      try {
+        const {
+          limit = 6,
+          skip = 0,
+          search = '',
+          status = 'all',
+          category = 'all',
+          priority = 'all',
+
+        } = req.query;
+
+        if (status === 'all' && category === 'all' && priority === 'all' && !search) {
+          const issues = await issueCollection
+            .find()
+            .skip(Number(skip))
+            .limit(Number(limit))
+            .sort({ createdAt: -1 })
+            .toArray();
+
+          const count = await issueCollection.countDocuments();
+          return res.send({ issues, count });
+        }
+
+        let query = {};
+
+
+        if (search) {
+          query.$or = [
+            { category: { $regex: search, $options: 'i' } },
+            { location: { $regex: search, $options: 'i' } },
+            { district: { $regex: search, $options: 'i' } },
+            { upzila: { $regex: search, $options: 'i' } },
+            { region: { $regex: search, $options: 'i' } },
+            { description: { $regex: search, $options: 'i' } }
+          ];
+        }
+
+
+        if (status !== 'all') query.status = status;
+        if (category !== 'all') query.category = category;
+        if (priority !== 'all') query.priority = priority;
+
+        const issues = await issueCollection
+          .find(query)
+          .skip(Number(skip))
+          .limit(Number(limit))
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        const count = await issueCollection.countDocuments(query);
+
+        res.send({ issues, count });
+      } catch (error) {
+        res.status(500).send({ message: 'Internal Server Error' });
+      }
+    });
+
+
+    app.get('/allIssues', async (req, res) => {
+      try {
+        const {
+          limit = 6,
+          skip = 0,
+          search = '',
+          status = 'all',
+          category = 'all',
+          priority = 'all',
+          sorting = 1 ? 1 : -1,
+        } = req.query;
+
+
+
+
+
+        const matchStage = {};
+
+
+        if (search) {
+          matchStage.$or = [
+            { category: { $regex: search, $options: 'i' } },
+            { location: { $regex: search, $options: 'i' } },
+            { district: { $regex: search, $options: 'i' } },
+            { upzila: { $regex: search, $options: 'i' } },
+            { region: { $regex: search, $options: 'i' } },
+            { description: { $regex: search, $options: 'i' } }
+          ];
+        }
+
+
+        if (status !== 'all') matchStage.status = status;
+        if (category !== 'all') matchStage.category = category;
+        if (priority !== 'all') matchStage.priority = priority;
+
+        const pipeline = [
+          {
+            $match: matchStage
+          },
+          {
+
+            $addFields: {
+              priorityOrder: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ['$priority', 'High'] }, then: 1 },
+                    { case: { $eq: ['$priority', 'Medium'] }, then: 2 },
+                    { case: { $eq: ['$priority', 'Low'] }, then: 3 }
+                  ],
+                  default: 4
+                }
+              },
+              statusOrder: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ['$status', 'pending'] }, then: 1 },
+                    { case: { $eq: ['$status', 'in-progress'] }, then: 2 },
+                    { case: { $eq: ['$status', 'rejected'] }, then: 3 },
+                    { case: { $eq: ['$status', 'resolved'] }, then: 4 },
+                    { case: { $eq: ['$status', 'closed'] }, then: 5 },
+                  ],
+                  default: 6
+                }
+              }
+            }
+          },
+          {
+
+            $sort: {
+              priorityOrder: 1,
+              statusOrder: Number(sorting),
+              createdAt: -1
+            }
+          },
+          {
+            //  pagination
+            $skip: Number(skip)
+          },
+          {
+            $limit: Number(limit)
+          }
+        ];
+
+        // if (status === 'all' && category === 'all' && priority === 'all' && !search) {
+        //   const issues = await issueCollection.aggregate(pipeline).toArray();
+
+        //   const count = await issueCollection.countDocuments();
+        //   return res.send({ issues, count });
+        // }
+
+        const issues = await issueCollection.aggregate(pipeline).toArray();
+        const count = await issueCollection.countDocuments(matchStage);
+
+        res.send({ issues, count });
+
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: 'Internal Server Error' });
+      }
+    });
+
+
 
 
 
