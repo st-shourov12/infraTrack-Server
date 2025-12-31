@@ -24,10 +24,10 @@ admin.initializeApp({
 
 
 app.use(cors(
-//   {
-//   origin: 'http://localhost:5173' || 'https://infratrackservice.netlify.app', 
-//   credentials: true
-// }
+    {
+    origin: ['http://localhost:5173', 'https://infratrackservice.netlify.app', 'https://infra-track.vercel.app'], 
+    credentials: true
+  }
 ));
 
 app.use(express.json());
@@ -49,7 +49,7 @@ const verifyFBToken = async (req, res, next) => {
   catch (err) {
     return res.status(401).send({ message: 'unauthorized access' })
   }
- 
+
 
 }
 
@@ -109,7 +109,7 @@ async function run() {
 
     app.post('/staffs', verifyFBToken, async (req, res) => {
       const staffApplication = req.body;
-     
+
       staffApplication.appliedAt = new Date();
       const email = staffApplication.email;
 
@@ -171,7 +171,7 @@ async function run() {
         });
 
 
-        const result =  await userCollection.insertOne({
+        const result = await userCollection.insertOne({
           uid: userRecord.uid,
           email,
           displayName,
@@ -240,13 +240,18 @@ async function run() {
       const result = await userCollection.findOne(query);
       res.send(result);
     });
+
     app.get('/users/:email/role', verifyFBToken, async (req, res) => {
-      const email = req.params.email;
-      const query = { email: email };
-      const result = await userCollection.findOne(query);
-      console.log('role', result)
-      res.send({ role: result?.role });
+      const email = decodeURIComponent(req.params.email);
+      const user = await userCollection.findOne({ email });
+
+      if (!user) {
+        return res.status(404).send({ role: null });
+      }
+
+      res.send({ role: user.role || 'user' });
     });
+
 
     app.patch('/users/:id', async (req, res) => {
       const id = req.params.id;
@@ -287,7 +292,7 @@ async function run() {
         if (role) query.userRole = role;
         // if (boosted !== undefined) query.boosted = boosted === 'true';
 
-        if(status === 'closed'){
+        if (status === 'closed') {
           query.closedAt = { $exists: true };
         }
 
@@ -452,7 +457,7 @@ async function run() {
         if (status === 'closed') {
           const issues = await issueCollection
             .find({ status: 'closed' })
-            .sort({ closedAt: -1 }) 
+            .sort({ closedAt: -1 })
             .limit(6)
             .toArray();
 
@@ -854,7 +859,7 @@ async function run() {
           );
         }
 
-        // ✅ Response
+        // Response
         res.send({
           sessionId,
           paymentId: result.insertedId,
